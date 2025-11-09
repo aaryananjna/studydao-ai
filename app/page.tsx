@@ -18,10 +18,22 @@ export default function Home() {
             </div>
             <div className="flex gap-4">
               <Link
-                href="/tutor"
+                href="/daos"
                 className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white transition-all"
               >
-                Launch App
+                Browse DAOs
+              </Link>
+              <Link
+                href="/tutor"
+                className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white transition-all"
+              >
+                AI Tutor
+              </Link>
+              <Link
+                href="/achievements"
+                className="px-4 py-2 rounded-lg border-2 border-yellow-500 text-yellow-400 hover:bg-yellow-500/10 transition-all"
+              >
+                🏆 Achievements
               </Link>
             </div>
           </div>

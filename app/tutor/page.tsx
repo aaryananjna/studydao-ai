@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import NFTMintSuccess from '@/components/NFTMintSuccess';
+import { incrementStat, getUserStats, earnBadge } from '@/lib/stats';
+import { checkBadgeEligibility, BADGE_TYPES } from '@/lib/badges';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -32,6 +34,8 @@ export default function TutorPage() {
 
   const [showNFTModal, setShowNFTModal] = useState(false);
   const [mintedAddress, setMintedAddress] = useState('');
+  const [daoCredits, setDaoCredits] = useState(999); 
+  const [showLowCreditsWarning, setShowLowCreditsWarning] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -44,6 +48,12 @@ export default function TutorPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
+
+    // CHECK CREDITS BEFORE ASKING
+    if (daoCredits <= 0) {
+      setShowLowCreditsWarning(true);
+      return;
+    }
 
     const userMessage: Message = {
       role: 'user',
@@ -68,15 +78,48 @@ export default function TutorPage() {
       const data = await response.json();
 
       if (data.success) {
-        const assistantMessage: Message = {
-          role: 'assistant',
-          content: data.message,
-          timestamp: data.timestamp,
-        };
-        setMessages(prev => [...prev, assistantMessage]);
-      } else {
-        throw new Error(data.error);
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: data.message,
+        timestamp: data.timestamp,
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+      
+      // DEDUCT 1 CREDIT
+      setDaoCredits(prev => prev - 1);
+      
+      // TRACK QUESTION ASKED
+      incrementStat('questionsAsked', 1);
+      
+      // CHECK FOR NEW BADGES
+      const stats = getUserStats();
+      const newBadges: string[] = [];
+      
+      BADGE_TYPES.forEach(badge => {
+        if (checkBadgeEligibility(badge.id, stats)) {
+          const isNew = earnBadge(badge.id);
+          if (isNew) {
+            newBadges.push(badge.name);
+          }
+        }
+      });
+      
+      // SHOW BADGE NOTIFICATION
+      if (newBadges.length > 0) {
+        setTimeout(() => {
+          alert(`🎉 NEW BADGE EARNED!\n\n${newBadges[0]}\n\nCheck your Achievements page!`);
+        }, 1500);
       }
+      
+      // Show warning if low
+      if (daoCredits - 1 <= 10) {
+        setTimeout(() => {
+          alert(`⚠️ Low Credits!\n\nOnly ${daoCredits - 1} questions remaining.\nVisit your DAO to contribute more SOL!`);
+        }, 1000);
+      }
+    } else {
+      throw new Error(data.error);
+    }
     } catch (error: any) {
       const errorMessage: Message = {
         role: 'assistant',
@@ -191,6 +234,30 @@ export default function TutorPage() {
               </h1>
             </Link>
             <div className="flex items-center gap-4">
+              <Link
+                href="/daos"
+                className="px-4 py-2 text-purple-300 hover:text-white transition-all text-sm"
+              >
+                Browse DAOs
+              </Link>
+              <Link
+                href="/achievements"
+                className="px-3 py-2 rounded-lg border border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10 transition-all text-sm"
+              >
+                🏆
+              </Link>
+              
+              {/* Credits display */}
+              <div className={`px-3 py-1 rounded-lg text-sm font-semibold ${
+                daoCredits > 20 
+                  ? 'bg-blue-600/20 border border-blue-500/30 text-blue-400'
+                  : daoCredits > 10
+                  ? 'bg-yellow-600/20 border border-yellow-500/30 text-yellow-400'
+                  : 'bg-red-600/20 border border-red-500/30 text-red-400'
+              }`}>
+                🤖 {daoCredits} credits
+              </div>
+              
               <div className="text-xs text-purple-300">
                 💳 {walletAddress.slice(0, 4)}...{walletAddress.slice(-4)}
               </div>
@@ -262,7 +329,28 @@ export default function TutorPage() {
           )}
           <div ref={messagesEndRef} />
         </div>
-
+        {/* Credits Meter */}
+        <div className="mb-4 p-4 rounded-xl bg-slate-800/50 border border-purple-500/30">
+          <div className="flex justify-between items-center mb-2">
+            <div className="text-sm text-purple-300">AI Credits Remaining</div>
+            <div className={`text-lg font-bold ${
+              daoCredits > 20 ? 'text-blue-400' : daoCredits > 10 ? 'text-yellow-400' : 'text-red-400'
+            }`}>
+              {daoCredits} / 999
+            </div>
+          </div>
+          <div className="w-full bg-slate-700 rounded-full h-2">
+            <div
+              className={`h-2 rounded-full transition-all ${
+                daoCredits > 20 ? 'bg-blue-500' : daoCredits > 10 ? 'bg-yellow-500' : 'bg-red-500'
+              }`}
+              style={{ width: `${(daoCredits / 999) * 100}%` }}
+            ></div>
+          </div>
+          <div className="text-xs text-gray-400 mt-2">
+            Each question costs 1 credit • <Link href="/daos" className="text-purple-400 hover:text-purple-300">Contribute to DAO</Link>
+          </div>
+        </div>
         {/* Input */}
         <form onSubmit={handleSubmit} className="flex gap-2">
           <input
@@ -282,6 +370,42 @@ export default function TutorPage() {
           </button>
         </form>
       </div>
+      {/* Low Credits Warning */}
+      {showLowCreditsWarning && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-br from-red-900 to-slate-900 rounded-3xl p-8 max-w-md w-full border-2 border-red-500">
+            <div className="text-6xl text-center mb-4">⚠️</div>
+            <h2 className="text-3xl font-bold text-white text-center mb-4">Out of Credits!</h2>
+            <p className="text-gray-300 text-center mb-6">
+              Your DAO has run out of AI credits. Contribute SOL to unlock more questions!
+            </p>
+            
+            <div className="bg-blue-600/20 border border-blue-500/30 rounded-xl p-4 mb-6">
+              <div className="text-sm text-blue-300 mb-2">💡 How to get more credits</div>
+              <div className="text-white text-sm">
+                1. Visit your DAO page<br/>
+                2. Click "Contribute"<br/>
+                3. Add SOL (1 SOL = 100 credits)
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Link
+                href="/daos"
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-semibold rounded-xl transition-all text-center"
+              >
+                Go to DAOs
+              </Link>
+              <button
+                onClick={() => setShowLowCreditsWarning(false)}
+                className="flex-1 px-6 py-3 bg-purple-600/50 hover:bg-purple-600 text-white font-semibold rounded-xl transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* NFT Success Modal */}
       {showNFTModal && (
         <NFTMintSuccess
